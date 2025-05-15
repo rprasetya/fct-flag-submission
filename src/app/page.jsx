@@ -3,12 +3,16 @@ import Image from "next/image";
 import { Shield, Users, Terminal } from "@phosphor-icons/react/dist/ssr"
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 
 
 export default function Home() {
   const [showVideo, setShowVideo] = useState(false);
+
+  useEffect(() => {
+    setShowVideo(true);
+  }, []);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">

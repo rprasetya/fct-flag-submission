@@ -15,6 +15,8 @@ const SubmitFlag = () => {
   const [submitData, setSubmitData] = useState([]);
   const [submittedFlags, setSubmittedFlags] = useState({});
   const [flagInputs, setFlagInputs] = useState({});
+  const [timeLeft, setTimeLeft] = useState('');
+  const [targetTime, setTargetTime] = useState(null);
   const [message, setMessage] = useState({ text: "", type: "" });
 
   const timer = {
@@ -34,6 +36,56 @@ const SubmitFlag = () => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!teamSession) return;
+    const fetchWaktuBerakhir = async () => {
+      const { data, error } = await supabase
+        .from('submit_waktu')
+        .select('waktu_berakhir')
+        .order('waktu_berakhir', { ascending: false })
+        .limit(1)
+        .eq('sesi', teamSession)
+        .single();
+
+      if (error) {
+        return;
+      } else if (!data){
+        return;
+      } else {
+        const waktuBerakhirUTC = new Date(data.waktu_berakhir) 
+        const waktuWITA = new Date(waktuBerakhirUTC.getTime() + (8 * 60 * 60 * 1000));
+        setTargetTime(waktuWITA);
+      }
+    };
+
+    fetchWaktuBerakhir();
+  }, [teamSession]);
+
+  useEffect(() => {
+    if (!targetTime) return;
+    
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = new Date(targetTime).getTime() - now;
+      
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+      
+      {
+        now>new Date(targetTime).getTime() 
+        ? 
+        setTimeLeft(`00:00:00`) 
+        : 
+        setTimeLeft(
+        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+        );
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [targetTime]);
 
   useEffect(() => {
     if (teamSession) {
@@ -101,7 +153,9 @@ const SubmitFlag = () => {
   const handleFlagSubmit = async (flag, correctFlag, idFlag) => {
     const { data: waktuData, error: waktuError } = await supabase
     .from("submit_waktu")
-    .select("*")
+    .select("waktu_berakhir")
+    .order('waktu_berakhir', { ascending: false })
+    .limit(1)
     .eq("sesi", teamSession)
     .single();
 
@@ -110,8 +164,10 @@ const SubmitFlag = () => {
       toast.error("Gagal mengambil data waktu.");
       return;
     }
+    const now = new Date().getTime();
     const waktuBerakhir = new Date(waktuData.waktu_berakhir);
-    const isTimeout = now > waktuBerakhir;
+    const waktuWITA = new Date(waktuBerakhir.getTime() + (8 * 60 * 60 * 1000));
+    const isTimeout = now > waktuWITA;
     if (isTimeout) {
       toast.error("Waktu sudah habis. Tidak bisa submit.");
       return;
@@ -163,9 +219,9 @@ const SubmitFlag = () => {
         <div className="flex justify-center items-center">
           <h2 className="text-3xl font-bold mb-4">Tim {teamId} - Sesi {teamSession}</h2>
         </div>
-        <div className="text-yellow-400 flex justify-end items-center">
-          <Clock className="inline mr-2" />
-          {formatTime(timer.currentTime)} / {formatTime(timer.duration)}
+        <div className="text-yellow-400 flex justify-center items-center text-2xl py-5">
+          <Clock className="mr-2" />
+          {timeLeft || 'Memuat...'}
         </div>
       </div>
 

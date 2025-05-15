@@ -15,27 +15,16 @@ import { Button } from "../ui/button";
 import { Clock } from "lucide-react";
 import supabase from "@/utils/supabase/client";
 import Cookies from "js-cookie";
-import useCountdown from "@/utils/useCountdown";
-import { fetchWaktuBerakhir } from "@/utils/fetchWaktuBerakhir";
-import { getSecondsRemaining } from "@/utils/getSecondsRemaining";
+import { toast } from "sonner";
 
 const Leaderboard = () => {
   const [session, setSession] = useState("");
-  const [durationSec, setDurationSec] = useState(null);
-  const [waktuBerakhir, setWaktuBerakhir] = useState(null);
+  const [targetTime, setTargetTime] = useState(null);
+  const [timeLeft, setTimeLeft] = useState('');
   const [jam, setJam] = useState("");
   const [menit, setMenit] = useState("");  
-  const submissions = useLeaderboardStream(session)
 
-  useEffect(() => {
-    const getData = async () => {
-      const waktu = await fetchWaktuBerakhir(session);
-      setWaktuBerakhir(waktu);
-    };
-    getData();
-  }, [session]);
-  
-  const { currentTime } = useCountdown(waktuBerakhir);
+  const submissions = useLeaderboardStream(session)
 
   useEffect(() => {
     const cookieData = Cookies.get("admin");
@@ -48,13 +37,60 @@ const Leaderboard = () => {
       }
     }
   }, []);  
-  const formatTime = (ms) => {
-    if (!ms || ms <= 0) return "--:--";
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
-    const seconds = String(totalSeconds % 60).padStart(2, "0");
-    return `${minutes}:${seconds}`;
-  };
+
+  useEffect(() => {
+    if (!session) return;
+    const fetchWaktuBerakhir = async () => {
+      const { data, error } = await supabase
+        .from('submit_waktu')
+        .select('waktu_berakhir')
+        .order('waktu_berakhir', { ascending: false })
+        .limit(1)
+        .eq('sesi', session)
+        .single();
+
+      if (error) {
+        return;
+      } else if (!data){
+        return;
+      } else {
+        const waktuBerakhirUTC = new Date(data.waktu_berakhir) 
+        const waktuWITA = new Date(waktuBerakhirUTC.getTime() + (8 * 60 * 60 * 1000));
+        setTargetTime(waktuWITA);
+        // setTargetTime(data.waktu_berakhir);
+      }
+    };
+
+    fetchWaktuBerakhir();
+  }, [session]);
+
+  useEffect(() => {
+    if (!targetTime) return;
+    
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = new Date(targetTime).getTime() - now;
+      console.log("Target:", new Date(targetTime).toString());
+      console.log("Sekarang:", new Date().toString());
+      console.log("Selisih ms:", new Date(targetTime).getTime() - Date.now());
+      
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+      
+      {
+        now>new Date(targetTime).getTime() 
+        ? 
+        setTimeLeft(`00:00:00`) 
+        : 
+        setTimeLeft(
+        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+        );
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [targetTime]);
 
   const grouped = {}
 
@@ -81,21 +117,24 @@ const Leaderboard = () => {
 
   const handleSubmit = async(e) => {
     e.preventDefault();
+    console.log("jam:", jam, "→", Number(jam));
+    console.log("menit:", menit, "→", Number(menit));
 
-    if (!session || !jam || !menit) {
+    if (!jam || !menit) {
       alert("Isi semua kolom dulu ya!");
       return;
     }
 
     const durasiInMs = (parseInt(jam) * 60 * 60 * 1000) + (parseInt(menit) * 60 * 1000);
     const waktuBerakhir = new Date(Date.now() + durasiInMs);
+
     try {
       const { data, error } = await supabase
         .from("submit_waktu")
         .upsert(
           {
             sesi: session,
-            waktu_berakhir: waktuBerakhir.toISOString(),
+            waktu_berakhir: waktuBerakhir,
             jam,
             menit
           },
@@ -103,7 +142,7 @@ const Leaderboard = () => {
 
       if (error) throw error;
 
-      alert("Waktu berhasil disimpan!");
+      toast.success("Waktu berhasil diatur!");
     } catch (error) {
       console.error("Gagal menyimpan waktu:", error.message);
       alert("Gagal menyimpan waktu ke database.");
@@ -120,9 +159,9 @@ const Leaderboard = () => {
           <h3 className="flex justify-center text-white font-bold text-3xl">Sesi {session}</h3>
           <div className="text-yellow-400 flex justify-center items-center text-2xl py-5">
             <Clock className="mr-2" />
-            {formatTime(currentTime)}
+            {timeLeft || 'Memuat...'}
           </div>
-          <h2 className="text-xl font-semibold mb-4 text-white">Atur Waktu Pengerjaan</h2>
+          <h2 className="text-xl font-semibold mb-3 mt-5 text-white">Timer</h2>
           <label className="block mb-4 text-white">
             Jam
             <input
